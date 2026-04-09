@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -13,7 +14,9 @@ st.set_page_config(
 
 
 def load_data():
-    df = pd.read_csv("all_data.csv")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "all_data.csv")
+    df = pd.read_csv(file_path)
     datetime_cols = [
         "order_purchase_timestamp", "order_approved_at",
         "order_delivered_carrier_date", "order_delivered_customer_date",
@@ -213,7 +216,7 @@ with col_e:
     fig7, ax7 = plt.subplots(figsize=(7, 4))
     sns.boxplot(
         data=payments_valid,
-        x='is_installment', 
+        x='is_installment',
         y='payment_value',
         hue='is_installment',
         palette={'Lunas (1x)': '#6495ED', 'Cicilan (>1x)': "#FF9F9F"},
@@ -236,9 +239,10 @@ with col_f:
     ).round(2)
     summary.index.name = 'Metode'
     st.dataframe(summary, use_container_width=True)
-    avg_inst = payments_valid[payments_valid['is_installment'] == 'Cicilan (>1x)']['payment_installments'].mean()
+    avg_inst = payments_valid[payments_valid['is_installment']
+                              == 'Cicilan (>1x)']['payment_installments'].mean()
     st.metric('Rata-rata Jumalah Cicilan', f'{avg_inst:.1f}x')
-    
+
 st.info('Pelanggan memiliki keccenderungan yang sangat jelas untuk memanfaatkan fitur installments ketika mereka membeli barang dengan nominal yang tinggi. Rata-rata pemayaran pada transaksi installments jauh lebih tinggi dibandingkan transaksi yang dibayar lunas langusng')
 
 st.markdown('---')
