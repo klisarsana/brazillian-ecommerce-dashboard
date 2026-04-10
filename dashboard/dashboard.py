@@ -12,6 +12,7 @@ st.set_page_config(
 
 # Fungsi untuk menyiapkan dataframe
 
+
 @st.cache_data
 def create_monthly_sales_df(df):
     monthly_sales_df = df.groupby(by='purchase_month').agg({
@@ -57,7 +58,7 @@ def create_rfm_df(df):
         'payment_value': 'sum'
     }).reset_index()
     rfm_df.columns = ['customer_id', 'recency', 'frequency', 'monetary']
-    
+
     # Memangkas ID Pelanggan (ambil 5 karakter terakhir) agar rapih di dashboard
     rfm_df['customer_id'] = rfm_df['customer_id'].str[:5]
     return rfm_df
@@ -79,6 +80,37 @@ all_df = pd.read_csv(file_path)
 all_df['order_purchase_timestamp'] = pd.to_datetime(
     all_df['order_purchase_timestamp'])
 
+# Membuat Sidebar
+with st.sidebar:
+    st.title('Brazilian E-Commerce Dashboard')
+    st.markdown('---')
+
+    # Filter Tanggal
+    min_date = all_df['order_purchase_timestamp'].min()
+    max_date = all_df['order_purchase_timestamp'].max()
+
+    start_date = st.date_input(
+        "Tanggal Mulai:",
+        value=min_date,
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    end_date = st.date_input(
+        "Tanggal Akhir:",
+        value=max_date,
+        min_value=min_date,
+        max_value=max_date
+    )
+
+    st.markdown('---')
+    st.markdown('**Muchlis Ar Wicaksana**')
+    st.markdown('**CDCC009D6Y2743**')
+
+# Filter Data Berdasarkan input tanggal
+all_df = all_df[(all_df['order_purchase_timestamp'] >= str(start_date)) &
+                (all_df['order_purchase_timestamp'] <= str(end_date))]
+
 # Dataframe untuk visualisasi
 monthly_sales_df = create_monthly_sales_df(all_df)
 delivery_review_df = create_delivery_review_df(all_df)
@@ -86,37 +118,6 @@ day_hour_df = create_day_hour_df(all_df)
 installments_df = create_installments_trend_df(all_df)
 rfm_df = create_rfm_df(all_df)
 state_df = create_state_orders_df(all_df)
-
-# Membuat Sidebar
-with st.sidebar:
-    st.title('Brazilian E-Commerce Dashboard')
-    st.markdown('---')
-    
-    # Filter Tanggal
-    min_date = all_df['order_purchase_timestamp'].min()
-    max_date = all_df['order_purchase_timestamp'].max()
-    
-    start_date = st.date_input(
-    "Tanggal Mulai:",
-    value=min_date,
-    min_value=min_date,
-    max_value=max_date
-    )
-    
-    end_date = st.date_input(
-    "Tanggal Akhir:",
-    value=max_date,
-    min_value=min_date,
-    max_value=max_date
-    )
-    
-    st.markdown('---')
-    st.markdown('**Muchlis Ar Wicaksana**')
-    st.markdown('**CDCC009D6Y2743**')
-
-# Filter Data Berdasarkan input tanggal
-main_df = all_df[(all_df['order_purchase_timestamp'] >= str(start_date)) &
-                 (all_df['order_purchase_timestamp'] <= str(end_date))]
 
 # Main Dashboard
 st.header('Brazilian E-Commerce Dashboard')
@@ -139,7 +140,7 @@ with col3:
     st.metric('Avg Order Value (AOV)', value=f'R$ {avg_order_value:,.2f}')
 
 with col4:
-    avg_review_score = round(main_df.review_score.mean(), 2)
+    avg_review_score = round(all_df.review_score.mean(), 2)
     st.metric('Avg Review Score', value=f'{avg_review_score} / 5')
 
 with col5:
@@ -173,7 +174,8 @@ with col_left:
         palette=['#d3d3d3', '#d3d3d3', '#d3d3d3', '#d3d3d3', '#ff4b4b'],
         ax=ax
     )
-    ax.set_title('Pengaruh Lama Pengiriman terhadap Review Score', fontsize=16, fontweight='bold')
+    ax.set_title('Pengaruh Lama Pengiriman terhadap Review Score',
+                 fontsize=16, fontweight='bold')
     ax.set_xlabel('Review Score (Bintang)')
     ax.set_ylabel('Rata-rata Waktu Pengiriman (Hari)')
     st.pyplot(fig)
@@ -187,7 +189,8 @@ with col_right:
         palette=['#d3d3d3', '#d3d3d3', '#ff4b4b'],
         ax=ax
     )
-    ax.set_title('Rata-rata Jumlah Cicilan Berdasarkan Kategori Belanja (Binning)', fontsize=16, fontweight='bold')
+    ax.set_title('Rata-rata Jumlah Cicilan Berdasarkan Kategori Belanja (Binning)',
+                 fontsize=16, fontweight='bold')
     ax.set_xlabel('Kategori Pembayaran')
     ax.set_ylabel('Rata-rata Jumlah Cicilan')
     st.pyplot(fig)
@@ -196,11 +199,13 @@ st.markdown('---')
 
 # Heatmap aktivitas transaksi pelanggan
 st.subheader('Aktivitas Transaksi Pelanggan (Hari vs Jam)')
-heatmap_data = day_hour_df.pivot(index='purchase_day', columns='purchase_hour', values='order_id').fillna(0)
-days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+heatmap_data = day_hour_df.pivot(
+    index='purchase_day', columns='purchase_hour', values='order_id').fillna(0)
+days_order = ['Monday', 'Tuesday', 'Wednesday',
+              'Thursday', 'Friday', 'Saturday', 'Sunday']
 heatmap_data = heatmap_data.reindex(days_order)
 fig, ax = plt.subplots(figsize=(16, 6))
-sns.heatmap(heatmap_data, cmap='YlOrRd',ax=ax)
+sns.heatmap(heatmap_data, cmap='YlOrRd', ax=ax)
 ax.set_xlabel('Jam Transaksi')
 ax.set_ylabel('Hari Transaksi')
 st.pyplot(fig)
