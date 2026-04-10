@@ -1,266 +1,272 @@
-import os
-import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import datetime
+import streamlit as st
 
+# Config Halaman Dashboard
 st.set_page_config(
-    layout="wide"
+    page_title='Brazilian E-Commerce Dashboard',
+    layout='wide'
 )
 
+# Fungsi untuk menyiapkan dataframe
+
+@st.cache_data
+def create_monthly_sales_df(df):
+    monthly_sales_df = df.groupby(by='purchase_month').agg({
+        'order_id': 'nunique',
+        'payment_value': 'sum'
+    }).reset_index()
+    monthly_sales_df.rename(columns={
+        'order_id': 'order_count',
+        'payment_value': 'revenue'
+    }, inplace=True)
+    return monthly_sales_df
+
+
+def create_delivery_review_df(df):
+    delivery_review_df = df.groupby('review_score').agg({
+        'delivery_time_days': 'mean'
+    }).reset_index()
+    return delivery_review_df
+
+
+def create_day_hour_df(df):
+    day_hour_df = df.groupby(['purchase_day', 'purchase_hour']).agg({
+        'order_id': 'nunique'
+    }).reset_index()
+    return day_hour_df
+
+
+def create_installments_trend_df(df):
+    # Membuat binning lagi agar reaktif terhadap filter
+    df['payment_category'] = pd.qcut(df['payment_value'], q=3, labels=[
+                                     'Low', 'Medium', 'High'])
+    installments_trend_df = df.groupby('payment_category', observed=True).agg({
+        'payment_installments': 'mean'
+    }).reset_index()
+    return installments_trend_df
+
+
+def create_rfm_df(df):
+    recent_date = df['order_purchase_timestamp'].max() + pd.Timedelta(days=1)
+    rfm_df = df.groupby('customer_id').agg({
+        'order_purchase_timestamp': lambda x: (recent_date - x.max()).days,
+        'order_id': 'nunique',
+        'payment_value': 'sum'
+    }).reset_index()
+    rfm_df.columns = ['customer_id', 'recency', 'frequency', 'monetary']
+    
+    # Memangkas ID Pelanggan (ambil 5 karakter terakhir) agar rapih di dashboard
+    rfm_df['customer_id'] = rfm_df['customer_id'].str[:5]
+    return rfm_df
+
+
+def create_state_orders_df(df):
+    state_orders_df = df.groupby(
+        'customer_state').order_id.nunique().reset_index()
+    state_orders_df.rename(columns={
+        'order_id': 'total_orders'
+    }, inplace=True)
+    return state_orders_df
+
+
 # Load Data
+all_df = pd.read_csv('all_df.csv')
+all_df['order_purchase_timestamp'] = pd.to_datetime(
+    all_df['order_purchase_timestamp'])
 
+# Dataframe untuk visualisasi
+monthly_sales_df = create_monthly_sales_df(all_df)
+delivery_review_df = create_delivery_review_df(all_df)
+day_hour_df = create_day_hour_df(all_df)
+installments_df = create_installments_trend_df(all_df)
+rfm_df = create_rfm_df(all_df)
+state_df = create_state_orders_df(all_df)
 
-def load_data():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(base_dir, "all_data.csv")
-    df = pd.read_csv(file_path)
-    datetime_cols = [
-        "order_purchase_timestamp", "order_approved_at",
-        "order_delivered_carrier_date", "order_delivered_customer_date",
-        "order_estimated_delivery_date"
-    ]
-    for col in datetime_cols:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
-    df["order_month_year"] = df["order_purchase_timestamp"].dt.to_period(
-        "M").astype(str)
-    days_order = ["Monday", "Tuesday", "Wednesday",
-                  "Thursday", "Friday", "Saturday", "Sunday"]
-    df["purchase_day"] = pd.Categorical(
-        df["purchase_day"], categories=days_order, ordered=True)
-    return df
-
-
-df = load_data()
-
-# Sidebar
-st.sidebar.title("E-Commerce Dashboard")
-st.sidebar.markdown("**Brazilian E-Commerce — Olist Dataset**")
-st.sidebar.markdown("---")
-
-min_date = df["order_purchase_timestamp"].min().date()
-max_date = datetime.date(2018, 8, 31)
-
-st.sidebar.markdown("## Filter Tanggal")
-start_date = st.sidebar.date_input(
+# Membuat Sidebar
+with st.sidebar:
+    st.title('Brazilian E-Commerce Dashboard')
+    st.markdown('---')
+    
+    # Filter Tanggal
+    min_date = all_df['order_purchase_timestamp'].min()
+    max_date = all_df['order_purchase_timestamp'].max()
+    
+    start_date = st.date_input(
     "Tanggal Mulai:",
     value=min_date,
     min_value=min_date,
     max_value=max_date
-)
-end_date = st.sidebar.date_input(
+    )
+    
+    end_date = st.date_input(
     "Tanggal Akhir:",
     value=max_date,
     min_value=min_date,
     max_value=max_date
-)
+    )
+    
+    st.markdown('---')
+    st.markdown('**Muchlis Ar Wicaksana**')
+    st.markdown('**CDCC009D6Y2743**')
 
-if start_date > end_date:
-    st.sidebar.error(
-        "Tanggal mulai tidak boleh lebih besar dari tanggal akhir!")
+# Filter Data Berdasarkan input tanggal
+main_df = all_df[(all_df['order_purchase_timestamp'] >= str(start_date)) &
+                 (all_df['order_purchase_timestamp'] <= str(end_date))]
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("Dibuat oleh: **Muchlis Ar Wicaksana**")
-st.sidebar.markdown("ID: CDCC009D6Y2743")
-
-# Filter
-mask = (
-    (df["order_purchase_timestamp"].dt.date >= start_date) &
-    (df["order_purchase_timestamp"].dt.date <= end_date)
-)
-filtered = df[mask].copy()
-
-# Header
-st.title("Brazilian E-Commerce Analytics Dashboard")
-st.caption(
-    f"Periode: {start_date} s/d {end_date}")
-st.markdown("---")
+# Main Dashboard
+st.header('Brazilian E-Commerce Dashboard')
+st.caption(f'Periode: {start_date} s/d {end_date}')
+st.markdown('---')
 
 # Metric KPI
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Total Revenue", f"R$ {filtered['payment_value'].sum():,.0f}")
-c2.metric("Total Orders", f"{filtered['order_id'].nunique():,}")
-c3.metric("Avg Review Score", f"{filtered['review_score'].mean():.2f}")
-c4.metric("Avg Delivery (Hari)",
-          f"{filtered['delivery_time_days'].mean():.1f}")
-avg_val = filtered.groupby("order_id")["payment_value"].sum().mean()
-c5.metric("Avg Order Value", f"R$ {avg_val:.0f}")
+col1, col2, col3, col4, col5 = st.columns(5)
 
-st.markdown("---")
+with col1:
+    total_orders = all_df.order_id.nunique()
+    st.metric("Total Orders", value=total_orders)
 
-# Revenue per Bulan
-st.subheader("Performa Penjualan & Revenue per Bulan")
+with col2:
+    total_revenue = all_df.payment_value.sum()
+    st.metric('Total Revenue', value=f'R$ {total_revenue:,.2f}')
 
-monthly_rev = (
-    filtered
-    .groupby("order_month_year")["payment_value"]
-    .sum()
-    .reset_index()
-    .sort_values("order_month_year")
-)
+with col3:
+    avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+    st.metric('Avg Order Value (AOV)', value=f'R$ {avg_order_value:,.2f}')
 
-fig1, ax1 = plt.subplots(figsize=(14, 4))
-ax1.plot(
-    monthly_rev["order_month_year"],
-    monthly_rev["payment_value"],
-    marker="o", linewidth=2.5, color="#FF9F9F", markersize=7
-)
-ax1.fill_between(range(len(monthly_rev)),
-                 monthly_rev["payment_value"], alpha=0.15, color="#FF9F9F")
-ax1.set_xticks(range(len(monthly_rev)))
-ax1.set_xticklabels(monthly_rev["order_month_year"], rotation=45, ha="right")
-ax1.set_title("Total Revenue Penjualan per Bulan",
-              fontsize=14, fontweight="bold")
-ax1.set_xlabel("Bulan")
-ax1.set_ylabel("Total Revenue (R$)")
-st.pyplot(fig1)
-st.info('Insight : Terdapat peningkatan pesat revenue hingga titik tertinggi di bulan November 2017, dan performa tersebut relatif stabil sepanjang tahun 2018.')
+with col4:
+    avg_review_score = round(main_df.review_score.mean(), 2)
+    st.metric('Avg Review Score', value=f'{avg_review_score} / 5')
+
+with col5:
+    avg_delivery_time = round(all_df.delivery_time_days.mean(), 1)
+    st.metric('Avg Delivery Time', value=f'{avg_delivery_time} Days')
 
 st.markdown('---')
 
-# Hubungan Pengiriman dan Review Score
-st.subheader('Pengaruh Lama Pengiriman terhadap Review Score')
-avg_delivery_by_score = (filtered.groupby('review_score')[
-                         'delivery_time_days'].mean().reset_index())
+# Performa penjualan (Revenue)
+st.subheader('Performa Penjualan & Revenue per Bulan')
+fig, ax = plt.subplots(figsize=(16, 8))
+ax.plot(
+    monthly_sales_df['purchase_month'],
+    monthly_sales_df['revenue'],
+    marker='o',
+    color='#ff4b4b'
+)
+plt.xticks(rotation=45)
+st.pyplot(fig)
 
-col_a, col_b = st.columns(2)
-with col_a:
-    fig2, ax2 = plt.subplots(figsize=(7, 4))
-    bar_colors = ["#D3D3D3", "#D3D3D3", "#D3D3D3", "#D3D3D3", "#FF9F9F"]
-    bars = ax2.bar(
-        avg_delivery_by_score['review_score'].astype(str),
-        avg_delivery_by_score['delivery_time_days'],
-        color=bar_colors
+st.markdown('---')
+
+# Analisis Review Score & Installment (cicilan)
+col_left, col_right = st.columns(2)
+with col_left:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(
+        x='review_score',
+        y='delivery_time_days',
+        data=delivery_review_df,
+        palette=['#d3d3d3', '#d3d3d3', '#d3d3d3', '#d3d3d3', '#ff4b4b'],
+        ax=ax
     )
-    ax2.set_title('Rata-rata Lama Pengiriman per Review Score',
-                  fontsize=12, fontweight='bold')
-    ax2.set_xlabel("Review Score (Bintang)")
-    ax2.set_ylabel('Rata-rata Hari Pengiriman')
-    st.pyplot(fig2)
+    ax.set_title('Pengaruh Lama Pengiriman terhadap Review Score', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Review Score (Bintang)')
+    ax.set_ylabel('Rata-rata Waktu Pengiriman (Hari)')
+    st.pyplot(fig)
 
-with col_b:
-    review_dist = filtered['review_score'].value_counts().sort_index()
-    fig3, ax3 = plt.subplots(figsize=(7, 4))
-    ax3.pie(review_dist.values, labels=[
-            f"★ {s}"for s in review_dist.index], autopct='%1.1f%%')
-    ax3.set_title('Distribusi Review Score', fontsize=12, fontweight='bold')
-    st.pyplot(fig3)
-st.info('Insight : Keterlambatan pengiriman berbanding lurus dengan kepuasan. Rating bintang 1 rata-rata mengalami waktu pengiriman sampai 20 hari, dan pelanggan yang memberikan bintang 5 rata-rata mengalami waktu pengiriman 10 hari atau kurang.')
+with col_right:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(
+        x='payment_category',
+        y='payment_installments',
+        data=installments_df,
+        palette=['#d3d3d3', '#d3d3d3', '#ff4b4b'],
+        ax=ax
+    )
+    ax.set_title('Rata-rata Jumlah Cicilan Berdasarkan Kategori Belanja (Binning)', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Kategori Pembayaran')
+    ax.set_ylabel('Rata-rata Jumlah Cicilan')
+    st.pyplot(fig)
 
 st.markdown('---')
 
 # Heatmap aktivitas transaksi pelanggan
-st.subheader('Kapan Pelanggan Paling Aktif Melakukan Transaksi ?')
-days_order = ['Monday', 'Tuesday', 'Wednesday',
-              'Thursday', 'Friday', 'Saturday', 'Sunday']
-heatmap_data = filtered.groupby(
-    ['purchase_day', 'purchase_hour']).size().unstack(fill_value=0)
-fig4, ax4 = plt.subplots(figsize=(16, 5))
-sns.heatmap(
-    heatmap_data,
-    cmap='YlOrRd',
-    annot=False,
-    ax=ax4,
+st.subheader('Aktivitas Transaksi Pelanggan (Hari vs Jam)')
+heatmap_data = day_hour_df.pivot(index='purchase_day', columns='purchase_hour', values='order_id').fillna(0)
+days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+heatmap_data = heatmap_data.reindex(days_order)
+fig, ax = plt.subplots(figsize=(16, 6))
+sns.heatmap(heatmap_data, cmap='YlOrRd',ax=ax)
+ax.set_xlabel('Jam Transaksi')
+ax.set_ylabel('Hari Transaksi')
+st.pyplot(fig)
+
+st.markdown('---')
+
+# RFM Parameter
+st.subheader('Customer Terbaik berdasarkan Parameter RFM')
+
+# KPI avg RFM
+col1, col2, col3 = st.columns(3)
+with col1:
+    avg_recency = round(rfm_df.recency.mean(), 1)
+    st.metric('Avg Recency (Hari)', value=avg_recency)
+
+with col2:
+    avg_frequency = round(rfm_df.frequency.mean(), 2)
+    st.metric('Avg Frequency', value=avg_frequency)
+
+with col3:
+    avg_monetary = rfm_df.monetary.mean()
+    st.metric('Avg Monetary', value=f'R$ {avg_monetary:,.2f}')
+
+# Visual RFM
+fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(35, 15))
+
+# Recency
+sns.barplot(
+    x='customer_id',
+    y='recency',
+    data=rfm_df.sort_values(by='recency', ascending=True).head(5),
+    palette='Reds_r',
+    ax=ax[0]
 )
-ax4.set_title("Heatmap Aktivitas Transaksi Pelanggan (Hari vs Jam)",
-              fontsize=14, fontweight='bold')
-ax4.set_xlabel('Jam Pembelian (0-23)')
-ax4.set_ylabel('Hari Pembelian')
-st.pyplot(fig4)
+ax[0].set_ylabel(None)
+ax[0].set_xlabel('customer_id', fontsize=30)
+ax[0].set_title('By Recency (Hari)', loc='center', fontsize=50)
+ax[0].tick_params(axis='y', labelsize=30)
+ax[0].tick_params(axis='x', labelsize=30)
 
-col_c, col_d = st.columns(2)
-with col_c:
-    orders_by_day = filtered.groupby(
-        'purchase_day', observed=True).size().reset_index(name='count')
-    weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-    bar_colors_day = [
-        '#FF9F9F' if d in weekdays else '#D3D3D3' for d in orders_by_day['purchase_day']]
-    fig5, ax5 = plt.subplots(figsize=(7, 3))
-    ax5.bar(orders_by_day['purchase_day'],
-            orders_by_day['count'], color=bar_colors_day)
-    ax5.set_title('Total Transaksi per Hari', fontsize=12, fontweight='bold')
-    ax5.set_xlabel('Hari')
-    ax5.set_ylabel('Jumlah Transaksi')
-    ax5.set_xticklabels(orders_by_day['purchase_day'], rotation=25)
-    st.pyplot(fig5)
+# Frequnecy
+sns.barplot(
+    x='customer_id',
+    y='frequency',
+    data=rfm_df.sort_values(by='frequency', ascending=False).head(5),
+    palette='Reds_r',
+    ax=ax[1]
+)
+ax[1].set_ylabel(None)
+ax[1].set_xlabel('customer_id', fontsize=30)
+ax[1].set_title('By Frequnecy', loc='center', fontsize=50)
+ax[1].tick_params(axis='y', labelsize=30)
+ax[1].tick_params(axis='x', labelsize=30)
 
-with col_d:
-    orders_by_hour = filtered.groupby(
-        'purchase_hour').size().reset_index(name='count')
-    peak_mask = orders_by_hour['purchase_hour'].between(
-        10, 16) | orders_by_hour['purchase_hour'].between(20, 22)
-    bar_colors_hour = ["#FF9F9F" if p else '#D3D3D3' for p in peak_mask]
-    fig6, ax6 = plt.subplots(figsize=(7, 3))
-    ax6.bar(orders_by_hour['purchase_hour'],
-            orders_by_hour['count'], color=bar_colors_hour)
-    ax6.set_title('Total Transaksi per Jam', fontsize=12, fontweight='bold')
-    ax6.set_xlabel('Jam')
-    ax6.set_ylabel('Jumlah Transaksi')
-    ax6.set_xticks(range(0, 24))
-    st.pyplot(fig6)
-st.info('Mayoritas aktivitas transaksi berpusat pada hari senin hingga jumat selama jam 10.00 - 16.00 dan malah hari jam 20.00 - 22.00, ini menandakan bahwa konsumen lebih suka belanja di sela sela aktivitas mereka, bukan di akhir pekan.')
+# Monetary
+sns.barplot(
+    x='customer_id',
+    y='monetary',
+    data=rfm_df.sort_values(by='monetary', ascending=False).head(5),
+    palette='Reds_r',
+    ax=ax[2]
+)
+ax[2].set_ylabel(None)
+ax[2].set_xlabel('customer_id', fontsize=30)
+ax[2].set_title('By Monetary', loc='center', fontsize=50)
+ax[2].tick_params(axis='y', labelsize=30)
+ax[2].tick_params(axis='x', labelsize=30)
+
+st.pyplot(fig)
 
 st.markdown('---')
-
-# Cicilan untuk nominal besar
-st.subheader('Apakah Pelanggan Cenderung Mencicil untuk Nominal Besar ?')
-
-payments_valid = filtered[filtered['payment_installments'] > 0].copy()
-payments_valid['is_installment'] = payments_valid['payment_installments'].apply(
-    lambda x: 'Cicilan (>1x)' if x > 1 else 'Lunas (1x)')
-
-col_e, col_f = st.columns(2)
-with col_e:
-    fig7, ax7 = plt.subplots(figsize=(7, 4))
-    sns.boxplot(
-        data=payments_valid,
-        x='is_installment',
-        y='payment_value',
-        hue='is_installment',
-        palette={'Lunas (1x)': '#6495ED', 'Cicilan (>1x)': "#FF9F9F"},
-        showfliers=False,
-        legend=False,
-    )
-    ax7.set_title('Nilai Transaksi: Bayar Lunas vs Cicilan',
-                  fontsize=12, fontweight='bold')
-    ax7.set_xlabel('Metode Pembayaran')
-    ax7.set_ylabel('Nilai Pembayaran (R$)')
-    st.pyplot(fig7)
-
-with col_f:
-    st.markdown('**Ringkasan Statistik Nilai Transaksi**')
-    summary = payments_valid.groupby('is_installment')['payment_value'].agg(
-        jumlah='count',
-        rata_rata='mean',
-        median='median',
-        std='std'
-    ).round(2)
-    summary.index.name = 'Metode'
-    st.dataframe(summary, use_container_width=True)
-    avg_inst = payments_valid[payments_valid['is_installment']
-                              == 'Cicilan (>1x)']['payment_installments'].mean()
-    st.metric('Rata-rata Jumalah Cicilan', f'{avg_inst:.1f}x')
-
-st.info('Pelanggan memiliki keccenderungan yang sangat jelas untuk memanfaatkan fitur installments ketika mereka membeli barang dengan nominal yang tinggi. Rata-rata pemayaran pada transaksi installments jauh lebih tinggi dibandingkan transaksi yang dibayar lunas langusng')
-
-st.markdown('---')
-
-st.subheader('Analisis Tambahan')
-col_g, col_h, col_i = st.columns([1, 2, 1])
-with col_h:
-    payments_types = filtered['payment_type'].value_counts()
-    fig8, ax8 = plt.subplots(figsize=(5, 5))
-    ax8.pie(
-        payments_types.values,
-        autopct='%1.1f%%',
-    )
-    ax8.legend(payments_types.index, bbox_to_anchor=(1, 1))
-    ax8.set_title('Presentase Tipe Pembayaran', fontsize=12, fontweight='bold')
-    st.pyplot(fig8)
-
-st.info('mayoritas pelanggan sangat bergantung pada penggunaan credit card sebagai metode transaksi utama. Hal ini menandakan bahwa perusahaan harus menjadikan credit card sebagai prioritas operasional agar tidak terjadi failed transaction. Selain itu, integrasi pembayaran Boleto tetap harus dipertahankan karena berhasil menjangkau segemen pelanggan yang mungkin belum memilii akses perbankan digital.')
-
-st.markdown('---')
-st.caption('Brazilian E-Commerce Dashboard | Muchlis Ar Wicaksana')
+st.caption('Muchlis Ar Wicaksana | CDCC009D6Y2743')
