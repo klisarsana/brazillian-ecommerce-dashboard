@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -72,7 +73,9 @@ def create_state_orders_df(df):
 
 
 # Load Data
-all_df = pd.read_csv('all_df.csv')
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, 'all_df.csv')
+all_df = pd.read_csv(file_path)
 all_df['order_purchase_timestamp'] = pd.to_datetime(
     all_df['order_purchase_timestamp'])
 
