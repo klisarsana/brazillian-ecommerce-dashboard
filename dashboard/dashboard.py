@@ -108,8 +108,8 @@ with st.sidebar:
     st.markdown('**CDCC009D6Y2743**')
 
 # Filter Data Berdasarkan input tanggal
-all_df = all_df[(all_df['order_purchase_timestamp'] >= str(start_date)) &
-                (all_df['order_purchase_timestamp'] <= str(end_date))]
+all_df = all_df[(all_df['order_purchase_timestamp'].dt.date >= start_date) &
+                (all_df['order_purchase_timestamp'].dt.date <= end_date)]
 
 # Dataframe untuk visualisasi
 monthly_sales_df = create_monthly_sales_df(all_df)
